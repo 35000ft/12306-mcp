@@ -1,7 +1,7 @@
 import asyncio
 import os
 import uuid
-from datetime import datetime
+import datetime
 from pathlib import Path
 from typing import List
 
@@ -67,12 +67,15 @@ class Web12306Playwright:
         await page.locator('#sureClick').click()
         await page.wait_for_load_state('load')
         await page.wait_for_load_state('networkidle')
+        await page.wait_for_load_state('domcontentloaded')
         cache = FastAPICache.get_backend()
-        if '/otn/view/index.html' in page.url:
+        is_success = await page.locator('.logout,a').count() > 0
+        if is_success:
             session_id = uuid.uuid4()
             await cache.set(f'12306_login_user_session_{username}', session_id, 10 * 60)
             await command_manager.set_result(login_result_key,
-                                             {'msg': "登录12306成功", 'data': session_id, 'status': 'success'})
+                                             {'msg': "登录12306成功", 'data': {'session_id': session_id},
+                                              'status': 'success'})
         else:
             await command_manager.set_result(login_result_key,
                                              {'msg': "登录失败，请检查账户与密码是否匹配", 'status': 'fail'})
@@ -80,7 +83,7 @@ class Web12306Playwright:
 
     async def buy_ticket(self, from_station: str, to_station: str, train_no: str,
                          passenger_names: List[str] = None,
-                         date: datetime.date = datetime.today(), ):
+                         date: datetime.date = datetime.date.today(), ):
         page = await self.get_page()
         await page.goto('https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc')
         await page.wait_for_load_state('domcontentloaded')

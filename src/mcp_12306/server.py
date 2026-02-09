@@ -330,6 +330,7 @@ async def mcp_endpoint_get(request: Request):
 async def mcp_endpoint_post(request: Request):
     """MCP Streamable HTTP Endpoint - POST for JSON-RPC messages"""
     request_id = None
+    _app = request.app
     try:
         data = await request.json()
 
@@ -469,6 +470,8 @@ async def mcp_endpoint_post(request: Request):
                     content = await get_train_no_by_train_code_validated(arguments)
                 elif tool_name == "get-current-time":
                     content = await get_current_time_validated(arguments)
+                elif tool_name == '12306-buy-ticket':
+                    content = ticket_service.buy_ticket(_app, arguments)
                 else:
                     content = [{
                         "type": "text",
@@ -599,7 +602,7 @@ async def login_12306(request: Request, form: LoginForm12306):
 
 
 @app.post("/12306/login_verification")
-async def login_verification_12306(request: Request, form: LoginForm12306):
+async def login_verification_12306(request: Request, form: LoginVerificationCode):
     return await ticket_service.login_verification_12306(request, form)
 
 
