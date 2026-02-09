@@ -29,6 +29,7 @@ dependencies = [
     "playwright~=1.42.0",
     "playwright-stealth~=1.0.5",
     "loguru>=0.7.3",
+    "fastapi-cache2>=0.2.2",
 ]
 
 [project.optional-dependencies]

@@ -10,12 +10,20 @@ import uuid
 import pytz
 import re
 
+from mcp_12306.schemas import GenericResponse, Status
+from mcp_12306.services import ticket_service
+from mcp_12306.utils import parse_ticket_string
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
 from playwright.async_api import async_playwright
 
+from mcp_12306.schemas.user import LoginForm12306, LoginVerificationCode
+from mcp_12306.utils.command_manager import command_manager
+from mcp_12306.utils.cr12306_web_utils import Web12306Playwright
 from .services.station_service import StationService
 from .utils.config import get_settings
 from .utils.date_utils import validate_date
@@ -182,11 +190,18 @@ MCP_TOOLS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ===== 启动阶段 =====
+    app.state.pw_semaphore = asyncio.Semaphore(1)
+    app.state.browser_dict = {}
     app.state.playwright = await async_playwright().start()
     app.state.browser = await app.state.playwright.chromium.launch(
-        headless=True
+        headless=False
     )
+
+    FastAPICache.init(
+        InMemoryBackend(),
+        prefix="fastapi-cache"
+    )
+
     logger.info("Playwright started")
 
     try:
@@ -578,6 +593,16 @@ async def mcp_endpoint_delete(request: Request):
         )
 
 
+@app.post("/12306/login")
+async def login_12306(request: Request, form: LoginForm12306):
+    return await ticket_service.login_12306(request, form)
+
+
+@app.post("/12306/login_verification")
+async def login_verification_12306(request: Request, form: LoginForm12306):
+    return await ticket_service.login_verification_12306(request, form)
+
+
 # 车站名/三字码自动转换
 async def ensure_telecode(val):
     if val.isalpha() and val.isupper() and len(val) == 3:
@@ -586,31 +611,13 @@ async def ensure_telecode(val):
     return code
 
 
-# 解析票务字符串
-
-def parse_ticket_string(ticket_str, query):
-    parts = ticket_str.split('|')
-    if len(parts) < 35:
-        return None
-    return {
-        "train_no": parts[3],
-        "start_time": parts[8],
-        "arrive_time": parts[9],
-        "duration": parts[10],
-        "business_seat_num": parts[32] or "",
-        "first_class_num": parts[31] or "",
-        "second_class_num": parts[30] or "",
-        "advanced_soft_sleeper_num": parts[21] or "",
-        "soft_sleeper_num": parts[23] or "",
-        "dongwo_num": parts[33] or "",
-        "hard_sleeper_num": parts[28] or "",
-        "soft_seat_num": parts[24] or "",
-        "hard_seat_num": parts[29] or "",
-        "no_seat_num": parts[26] or "",
-        "from_station": query["from_station"],
-        "to_station": query["to_station"],
-        "train_date": query["train_date"]
-    }
+async def auto_close_context(ctx, delay):
+    try:
+        await asyncio.sleep(delay)
+        await ctx.close()
+        print("Context auto closed by TTL")
+    except asyncio.CancelledError:
+        pass
 
 
 # 车站模糊搜索工具
