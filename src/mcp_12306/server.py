@@ -3,14 +3,19 @@ import json
 import logging
 from contextlib import asynccontextmanager
 
+import china_railway_tools.api
 import httpx
 from datetime import datetime, date
 from typing import Dict, List, Any
 import uuid
 import pytz
 import re
+import os
 
-from mcp_12306.schemas import GenericResponse, Status
+from china_railway_tools.schemas import QueryTrains
+from watchfiles import awatch
+
+from mcp_12306.schemas import GenericResponse, Status, BuyTicketReq
 from mcp_12306.services import ticket_service
 from mcp_12306.utils import parse_ticket_string
 from fastapi import FastAPI, Request, HTTPException
@@ -24,6 +29,7 @@ from playwright.async_api import async_playwright
 from mcp_12306.schemas.user import LoginForm12306, LoginVerificationCode
 from mcp_12306.utils.command_manager import command_manager
 from mcp_12306.utils.cr12306_web_utils import Web12306Playwright
+from mcp_12306.utils.serializer import pydantic_serialize
 from .services.station_service import StationService
 from .utils.config import get_settings
 from .utils.date_utils import validate_date
@@ -55,44 +61,9 @@ connected_clients: Dict[str, Dict] = {}
 # MCP Tools Definition according to spec
 MCP_TOOLS = [
     {
-        "name": "query-tickets",
-        "description": "官方12306余票/车次/座席/时刻一站式查询。输入出发站、到达站、日期，返回所有可购车次、时刻、历时、各席别余票等详细信息。支持中文名、三字码。\n\n【智能筛选指南】返回结果通常包含出发/到达城市的所有相关车站（如北京/北京西/北京南）。请根据用户输入语境灵活处理：\n1. 用户仅输入城市名（如'九江'）：请展示所有相关站点的车次，不要过滤。\n2. 用户指定具体车站（如'九江站'）：优先展示匹配车站的车次，但若其他同城车站有更优方案（如时间更短、有票），也应作为补充选项提供。\n请避免机械地仅通过字符串匹配过滤车次，以免遗漏用户可能感兴趣的出行方案。",
-        "inputSchema": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "title": "车票查询参数",
-            "description": "查询火车票所需的参数",
-            "properties": {
-                "from_station": {"type": "string", "title": "出发站", "description": "出发车站名称，例如：北京、上海、广州",
-                                 "minLength": 1},
-                "to_station": {"type": "string", "title": "到达站", "description": "到达车站名称，例如：北京、上海、广州",
-                               "minLength": 1},
-                "train_date": {"type": "string", "title": "出发日期", "description": "出发日期，格式：YYYY-MM-DD",
-                               "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}
-            },
-            "required": ["from_station", "to_station", "train_date"],
-            "additionalProperties": False
-        }
-    },
-    {
         "name": "query-ticket-price",
         "description": "查询火车票价信息。输入出发站、到达站、日期，返回各车次的票价详情。支持指定车次号过滤。\n\n【智能筛选指南】返回结果通常包含出发/到达城市的所有相关车站（如北京/北京西/北京南）。请根据用户输入语境灵活处理：\n1. 用户仅输入城市名（如'九江'）：请展示所有相关站点的车次，不要过滤。\n2. 用户指定具体车站（如'九江站'）：优先展示匹配车站的车次，但若其他同城车站有更优方案（如时间更短、有票），也应作为补充选项提供。\n请避免机械地仅通过字符串匹配过滤车次，以免遗漏用户可能感兴趣的出行方案。",
-        "inputSchema": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "title": "票价查询参数",
-            "properties": {
-                "from_station": {"type": "string", "title": "出发站", "minLength": 1},
-                "to_station": {"type": "string", "title": "到达站", "minLength": 1},
-                "train_date": {"type": "string", "title": "出发日期", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
-                "train_code": {"type": "string", "title": "车次号（可选）",
-                               "description": "指定车次号（如G123），若提供则只返回该车次信息"},
-                "purpose_codes": {"type": "string", "title": "乘客类型", "description": "ADULT=成人, 0X=学生",
-                                  "default": "ADULT"}
-            },
-            "required": ["from_station", "to_station", "train_date"],
-            "additionalProperties": False
-        }
+        "inputSchema": QueryTrains.model_json_schema(),
     },
     {
         "name": "search-stations",
@@ -184,6 +155,11 @@ MCP_TOOLS = [
             },
             "additionalProperties": False
         }
+    },
+    {
+        "name": "12306-buy-ticket",
+        "description": "操作12306网页购买车票，需要登录",
+        "inputSchema": BuyTicketReq.model_json_schema()
     }
 ]
 
@@ -194,7 +170,7 @@ async def lifespan(app: FastAPI):
     app.state.browser_dict = {}
     app.state.playwright = await async_playwright().start()
     app.state.browser = await app.state.playwright.chromium.launch(
-        headless=False
+        headless=True if os.getenv('ENV') == 'prod' else False,
     )
 
     FastAPICache.init(
@@ -299,7 +275,18 @@ async def mcp_endpoint_get(request: Request):
             # Keep connection alive with periodic pings
             while True:
                 await asyncio.sleep(30)  # Send ping every 30 seconds
-                yield f"event: ping\ndata: {{\"timestamp\": \"{datetime.now().isoformat()}\"}}\n\n"
+                payload = {
+                    "jsonrpc": "2.0",
+                    "method": "mcp/ping",  # 或 notifications/ping
+                    "params": {
+                        "timestamp": datetime.now().isoformat()
+                    }
+                }
+
+                yield (
+                        "event: message\n"
+                        "data: " + json.dumps(payload) + "\n\n"
+                )
 
         except asyncio.CancelledError:
             logger.info(f"MCP GET connection closed - Session ID: {session_id}")
@@ -459,7 +446,7 @@ async def mcp_endpoint_post(request: Request):
                 if tool_name == "query-tickets":
                     content = await query_tickets_validated(arguments)
                 elif tool_name == "query-ticket-price":
-                    content = await query_ticket_price_validated(arguments)
+                    content = await query_ticket_price_validated(QueryTrains.model_validate(arguments))
                 elif tool_name == "search-stations":
                     content = await search_stations_validated(arguments)
                 elif tool_name == "query-transfer":
@@ -471,7 +458,7 @@ async def mcp_endpoint_post(request: Request):
                 elif tool_name == "get-current-time":
                     content = await get_current_time_validated(arguments)
                 elif tool_name == '12306-buy-ticket':
-                    content = ticket_service.buy_ticket(_app, arguments)
+                    content = await ticket_service.buy_ticket(_app, BuyTicketReq.model_validate(arguments))
                 else:
                     content = [{
                         "type": "text",
@@ -489,7 +476,7 @@ async def mcp_endpoint_post(request: Request):
                 logger.info(f"Tool {tool_name} executed successfully")
 
             except Exception as tool_error:
-                logger.error(f"Tool execution error: {tool_error}")
+                logger.error(f"Tool execution error: {tool_error}", exc_info=tool_error)
                 response = {
                     "jsonrpc": "2.0",
                     "id": request_id,
@@ -612,15 +599,6 @@ async def ensure_telecode(val):
         return val
     code = await station_service.get_station_code(val)
     return code
-
-
-async def auto_close_context(ctx, delay):
-    try:
-        await asyncio.sleep(delay)
-        await ctx.close()
-        print("Context auto closed by TTL")
-    except asyncio.CancelledError:
-        pass
 
 
 # 车站模糊搜索工具
@@ -1376,170 +1354,12 @@ async def query_transfer_validated(args: dict) -> list:
 
 
 # ========== query_ticket_price_validated 函数实现 ==========
-async def query_ticket_price_validated(args: dict) -> list:
+async def query_ticket_price_validated(form: QueryTrains) -> list:
     """
     查询火车票价信息
     """
-    try:
-        from_station = args.get("from_station", "").strip()
-        to_station = args.get("to_station", "").strip()
-        train_date = args.get("train_date", "").strip()
-        purpose_codes = args.get("purpose_codes", "ADULT").strip()
-        train_code = args.get("train_code", "").strip().upper()
-
-        # 参数校验
-        if not from_station or not to_station or not train_date:
-            response_data = {"success": False, "error": "请输入出发站、到达站和出发日期"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-        # 日期校验
-        if not validate_date(train_date):
-            response_data = {"success": False, "error": "日期格式错误，请使用 YYYY-MM-DD 格式"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-        # 转换三字码
-        async def ensure_telecode(val):
-            if val.isalpha() and val.isupper() and len(val) == 3:
-                return val
-            code = await station_service.get_station_code(val)
-            return code
-
-        from_code = await ensure_telecode(from_station)
-        to_code = await ensure_telecode(to_station)
-
-        if not from_code:
-            response_data = {"success": False, "error": f"出发站无效: {from_station}"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-        if not to_code:
-            response_data = {"success": False, "error": f"到达站无效: {to_station}"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-        import httpx
-        url_init = "https://kyfw.12306.cn/otn/leftTicket/init"
-        url_price = "https://kyfw.12306.cn/otn/leftTicketPrice/queryAllPublicPrice"
-
-        headers = {
-            "User-Agent": USER_AGENT,
-            "Referer": "https://kyfw.12306.cn/otn/leftTicket/init",
-            "Host": "kyfw.12306.cn",
-            "Accept": "application/json, text/javascript, */*; q=0.01"
-        }
-
-        params = {
-            "leftTicketDTO.train_date": train_date,
-            "leftTicketDTO.from_station": from_code,
-            "leftTicketDTO.to_station": to_code,
-            "purpose_codes": purpose_codes
-        }
-
-        max_retries = 3
-        last_exception = None
-        json_data = None
-
-        for attempt in range(max_retries):
-            try:
-                async with httpx.AsyncClient(follow_redirects=False, timeout=8, verify=False) as client:
-                    await client.get(url_init, headers=headers)
-                    resp = await client.get(url_price, headers=headers, params=params)
-                    logger.info(f"12306 price query status: {resp.status_code}, url: {resp.url}")
-
-                    if resp.status_code != 200:
-                        logger.error(f"12306接口返回异常: {resp.status_code}")
-                        response_data = {"success": False, "error": f"12306接口返回异常: {resp.status_code}"}
-                        return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-                    try:
-                        json_data = resp.json()
-                        break
-                    except Exception as e:
-                        logger.error(f"12306响应解析失败: {str(e)}")
-                        response_data = {"success": False, "error": "12306响应解析失败", "detail": str(e)}
-                        return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-            except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
-                last_exception = e
-                if attempt < max_retries - 1:
-                    logger.warning(f"票价查询网络请求失败，正在重试 ({attempt + 1}/{max_retries}): {str(e)}")
-                    await asyncio.sleep(1)
-                else:
-                    logger.error(f"票价查询网络请求重试次数已耗尽: {str(e)}")
-        else:
-            response_data = {"success": False, "error": f"网络请求失败 (已重试{max_retries}次): {str(last_exception)}"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-        # 解析票价信息
-        if json_data and "data" in json_data:
-            result_data = []
-            price_map = {
-                "wz_price": "无座",
-                "yz_price": "硬座",
-                "yw_price": "硬卧",
-                "rw_price": "软卧",
-                "gr_price": "高级软卧",
-                "ze_price": "二等座",
-                "zy_price": "一等座",
-                "swz_price": "商务座",
-                "tdz_price": "特等座",
-                "dw_price": "动卧"
-            }
-
-            for item in json_data.get("data", []):
-                query_left_new_dto = item.get("queryLeftNewDTO", {})
-
-                # 如果指定了车次号，进行过滤
-                current_train_code = query_left_new_dto.get("station_train_code", "")
-                if train_code and current_train_code != train_code:
-                    continue
-
-                train_info = {
-                    "train_no": query_left_new_dto.get("train_no"),
-                    "train_code": current_train_code,
-                    "from_station": query_left_new_dto.get("from_station_name"),
-                    "to_station": query_left_new_dto.get("to_station_name"),
-                    "start_time": query_left_new_dto.get("start_time"),
-                    "arrive_time": query_left_new_dto.get("arrive_time"),
-                    "duration": query_left_new_dto.get("lishi"),
-                    "train_class_name": query_left_new_dto.get("train_class_name"),
-                    "prices": {}
-                }
-
-                # 提取票价
-                for key, name in price_map.items():
-                    price_val = query_left_new_dto.get(key)
-                    if price_val and price_val != "--":
-                        try:
-                            # 12306返回的价格最后一位是角，例如"00230"表示23.0元
-                            if price_val.isdigit():
-                                price_int = int(price_val)
-                                # 插入小数点
-                                price_str = str(price_int)
-                                if len(price_str) == 1:
-                                    formatted_price = "0." + price_str
-                                else:
-                                    formatted_price = price_str[:-1] + "." + price_str[-1]
-                                train_info["prices"][name] = formatted_price
-                            else:
-                                train_info["prices"][name] = price_val
-                        except:
-                            train_info["prices"][name] = price_val
-
-                result_data.append(train_info)
-
-            final_response = {
-                "success": True,
-                "from_station": from_station,
-                "to_station": to_station,
-                "train_date": train_date,
-                "count": len(result_data),
-                "data": result_data
-            }
-            return [{"type": "text", "text": json.dumps(final_response, ensure_ascii=False)}]
-
-        return [{"type": "text", "text": json.dumps(json_data, ensure_ascii=False)}]
-
-    except Exception as e:
-        logger.error(f"查询票价失败: {repr(e)}")
-        response_data = {"success": False, "error": "查询票价失败", "detail": str(e)}
-        return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
+    result = await china_railway_tools.api.query_tickets(form)
+    return [{"type": "text", "text": json.dumps(pydantic_serialize(result), ensure_ascii=False)}]
 
 
 # ========== get_current_time_validated 新增时间工具 ==========

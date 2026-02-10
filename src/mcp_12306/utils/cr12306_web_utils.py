@@ -107,6 +107,17 @@ class Web12306Playwright:
         try:
             await page.locator(
                 f"xpath=//div[@class='train']//a[text()='{train_no}']/ancestor::td[1]/following-sibling::td/a[text()='预订']").click()
+            await asyncio.sleep(0.5)
+            try:
+                # 临近开车提示和弹窗
+                count = page.locator('#qd_closeDefaultWarningWindowDialog_id').count()
+                if count > 0:
+                    await page.locator('#qd_closeDefaultWarningWindowDialog_id').click(timeout=1)
+                else:
+                    pass
+            except Exception as e:
+                pass
+
             await page.wait_for_load_state('load')
         except PlaywrightTimeoutError:
             raise ValueError("找不到该车次或该车次已售罄")
@@ -143,7 +154,7 @@ class Web12306Playwright:
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch_persistent_context(
-            headless=False
+            headless=True if os.getenv('ENV') == 'prod' else False,
         )
         p = Web12306Playwright(browser)
         await p.login(os.getenv('12306_USERNAME'), os.getenv('12306_PWD'), os.getenv('12306_ID_LAST_4DIGITS'))

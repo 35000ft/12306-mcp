@@ -1,28 +1,35 @@
 # 基础镜像
-FROM python:3.10-slim
+FROM python:3.12-bullseye AS mcp_12306_base
 
 # 设置工作目录
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y \
+    curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # 复制依赖文件
 COPY pyproject.toml uv.lock ./
-COPY README.md ./
 
-# 安装依赖（推荐使用pip，如果你用poetry可自行调整）
 RUN pip install --upgrade pip && \
     pip install uv && \
     uv sync --no-install-project
 
+# 设置时区（可选）
+ENV TZ=Asia/Shanghai
+
+FROM mcp_12306_base
+
 # 复制项目代码
-COPY src ./src
 COPY docs ./docs
 COPY scripts ./scripts
+COPY src ./src
+COPY README.md ./
 
 # 安装项目本身
 RUN uv sync
+RUN uv run playwright install --with-deps
 
-# 设置时区（可选）
-ENV TZ=Asia/Shanghai
 
 # 暴露端口
 EXPOSE 8000

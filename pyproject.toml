@@ -30,6 +30,7 @@ dependencies = [
     "playwright-stealth~=1.0.5",
     "loguru>=0.7.3",
     "fastapi-cache2>=0.2.2",
+    "china-railway-tools",
 ]
 
 [project.optional-dependencies]
@@ -64,6 +65,9 @@ default = true
 [[tool.uv.index]]
 name = "aliyun"
 url = "https://mirrors.aliyun.com/pypi/simple/"
+
+[tool.uv.sources]
+china-railway-tools = { git = "https://github.com/35000ft/china-railway-tools.git", rev = "master" }
 
 [project.scripts]
 mcp-server-12306 = "mcp_12306.cli:main"
