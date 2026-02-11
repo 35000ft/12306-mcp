@@ -315,7 +315,7 @@ wheels = [
 [[package]]
 name = "china-railway-tools"
 version = "0.1.0"
-source = { git = "https://github.com/35000ft/china-railway-tools.git?rev=master#b3fe042a10539e2cfad26028b66fc73fd197701b" }
+source = { git = "https://github.com/35000ft/china-railway-tools.git?rev=master#f734c892f8651853ee63cacc0fe74240c567cca8" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "annotated-types" },
