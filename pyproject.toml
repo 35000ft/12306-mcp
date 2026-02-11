@@ -7,7 +7,7 @@ name = "mcp-server-12306"
 version = "0.3.0"
 description = "MCP服务器用于12306车票查询"
 authors = [
-    {name = "Drfccv", email = "2713587802@qq.com"}
+    { name = "Drfccv", email = "2713587802@qq.com" }
 ]
 dynamic = ["readme"]
 requires-python = ">=3.10"
@@ -89,12 +89,6 @@ disallow_untyped_defs = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_12306"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/mcp_12306/resources/station_name.js" = "mcp_12306/resources/station_name.js"
-
-[tool.hatch.build.targets.sdist.force-include]
-"src/mcp_12306/resources/station_name.js" = "src/mcp_12306/resources/station_name.js"
 
 [tool.hatch.metadata.hooks.fancy-pypi-readme]
 content-type = "text/markdown"

@@ -11,7 +11,7 @@ import china_railway_tools.api
 import china_railway_tools.api as cr_utils
 import httpx
 import uvicorn
-from china_railway_tools.schemas import QueryTrains, TrainNo
+from china_railway_tools.schemas import QueryTrains, TrainNo, QueryTrainSchedule
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, Response
@@ -99,19 +99,7 @@ MCP_TOOLS = [
     {
         "name": "get-train-route-stations",
         "description": "列车经停站全表查询。支持输入车次号或官方编号，自动转换，返回所有经停站、到发时刻、停留时间。支持三字码/全名。",
-        "inputSchema": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "title": "列车经停站查询参数",
-            "properties": {
-                "train_no": {"type": "string", "title": "车次编码", "minLength": 1},
-                "from_station": {"type": "string", "title": "出发站id", "minLength": 1},
-                "to_station": {"type": "string", "title": "到达站id", "minLength": 1},
-                "train_date": {"type": "string", "title": "出发日期", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}
-            },
-            "required": ["train_no", "from_station", "to_station", "train_date"],
-            "additionalProperties": False
-        }
+        "inputSchema": QueryTrainSchedule.model_json_schema()
     },
     {
         "name": "get-train-no-by-train-code",
@@ -438,7 +426,7 @@ async def mcp_endpoint_post(request: Request):
                 elif tool_name == "query-transfer":
                     content = await query_transfer_validated(arguments)
                 elif tool_name == "get-train-route-stations":
-                    content = await get_train_route_stations_validated(arguments)
+                    content = await get_train_route_stations_validated(QueryTrainSchedule.model_validate(arguments))
                 elif tool_name == "get-train-no-by-train-code":
                     content = await get_train_no_by_train_code_validated(arguments)
                 elif tool_name == "get-current-time":
@@ -594,208 +582,17 @@ async def get_train_no_by_train_code_validated(args: dict) -> list:
 
 
 # ========== get_train_route_stations_validated 函数实现 ==========
-async def get_train_route_stations_validated(args: dict) -> list:
+async def get_train_route_stations_validated(form: QueryTrainSchedule) -> list:
     """
     查询指定车次的所有经停站及时刻信息。
     参数: train_no(列车编号或车次号), from_station(出发站), to_station(到达站), train_date(日期)
     自动检测输入是车次号还是列车编号，如果是车次号则先转换为列车编号。
     """
     try:
-        train_no = args.get("train_no", "").strip()
-        from_station = args.get("from_station", "").strip().upper()
-        to_station = args.get("to_station", "").strip().upper()
-        train_date = args.get("train_date", "").strip()
-
-        # 参数校验
-        if not train_no:
-            response_data = {"success": False, "error": "车次编号(train_no)不能为空"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-        if not from_station:
-            response_data = {"success": False, "error": "出发站不能为空"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-        if not to_station:
-            response_data = {"success": False, "error": "到达站不能为空"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-        if not train_date:
-            response_data = {"success": False, "error": "出发日期不能为空"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-        # 日期格式校验
-        try:
-            dt = datetime.strptime(train_date, "%Y-%m-%d")
-            if dt.date() < date.today():
-                response_data = {"success": False, "error": "出发日期不能早于今天"}
-                return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-        except Exception:
-            response_data = {"success": False, "error": "出发日期格式错误，应为YYYY-MM-DD"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-        # 三字码转换
-        def is_telecode(val):
-            return val.isalpha() and val.isupper() and len(val) == 3
-
-        if not is_telecode(from_station):
-            code = await cr_utils.get_station(from_station)
-            if not code:
-                response_data = {"success": False, "error": f"出发站无效或无法识别：{from_station}"}
-                return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-            from_station = code
-
-        if not is_telecode(to_station):
-            code = await cr_utils.get_station(to_station)
-            if not code:
-                response_data = {"success": False, "error": f"到达站无效或无法识别：{to_station}"}
-                return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-            to_station = code
-
-        # 检测输入是车次号还是列车编号
-        # 列车编号格式通常为: 5700xxx或类似的长数字+字母格式（如：57000C95690L）
-        # 车次号格式通常为: 字母+数字（如：C9569、G1234、T456）
-        import re
-        is_train_code = bool(re.match(r'^[A-Z]+\d+$', train_no))
-
-        if is_train_code:
-            # 输入的是车次号，需要先转换为列车编号
-            logger.info(f"检测到车次号 {train_no}，正在转换为列车编号...")
-            convert_args = {
-                "train_code": train_no,
-                "from_station": from_station,
-                "to_station": to_station,
-                "train_date": train_date
-            }
-            convert_result = await get_train_no_by_train_code_validated(convert_args)
-
-            if not convert_result or not convert_result[0].get("text"):
-                response_data = {"success": False, "error": f"无法获取车次 {train_no} 的列车编号"}
-                return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-            result_json_str = convert_result[0].get("text", "{}")
-            result_data = json.loads(result_json_str)
-            if not result_data.get("success"):
-                return convert_result  # 返回错误信息
-
-            actual_train_no = result_data.get("train_no")
-            if not actual_train_no:
-                response_data = {"success": False, "error": f"无法解析车次 {train_no} 的列车编号"}
-                return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-            logger.info(f"车次 {train_no} 转换为列车编号: {actual_train_no}")
-        else:
-            # 输入的是列车编号，直接使用
-            actual_train_no = train_no
-            logger.info(f"使用列车编号: {actual_train_no}")
-
-        # 调用12306经停站接口 - 使用正确的API端点
-        url = "https://kyfw.12306.cn/otn/czxx/queryByTrainNo"
-        params = {
-            "train_no": actual_train_no,  # 使用转换后的列车编号
-            "from_station_telecode": from_station,
-            "to_station_telecode": to_station,
-            "depart_date": train_date
-        }
-
-        # 使用与参考实现相同的请求方式
-        headers = {
-            "User-Agent": USER_AGENT,
-            "Referer": "https://kyfw.12306.cn/otn/leftTicket/init",
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-            "Accept-Language": "zh-CN,zh;q=0.9",
-            "Connection": "keep-alive",
-            "Host": "kyfw.12306.cn", "X-Requested-With": "XMLHttpRequest",
-            "Origin": "https://kyfw.12306.cn"
-        }
-
-        max_retries = 3
-        last_exception = None
-        json_data = None
-
-        for attempt in range(max_retries):
-            try:
-                async with httpx.AsyncClient(follow_redirects=False, timeout=8, verify=False) as client:
-                    # 先访问init获取cookie
-                    init_resp = await client.get("https://kyfw.12306.cn/otn/leftTicket/init", headers=headers)
-                    logger.info(f"12306 init status: {init_resp.status_code}")
-
-                    resp = await client.get(url, headers=headers, params=params)
-                    logger.info(f"12306 route query status: {resp.status_code}, url: {resp.url}")
-
-                    # 检查HTTP状态码
-                    if resp.status_code != 200:
-                        logger.error(f"12306接口返回异常状态码: {resp.status_code}, body: {resp.text}")
-                        response_data = {"success": False, "error": f"12306接口返回异常: {resp.status_code}"}
-                        return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-                    # 检查是否被重定向到错误页面
-                    if "error.html" in str(resp.url) or "ntce" in str(resp.url):
-                        response_data = {"success": False, "error": "12306反爬虫拦截，请稍后重试或更换网络环境"}
-                        return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-                    try:
-                        json_data = resp.json()
-                        logger.info(f"12306 response keys: {list(json_data.keys()) if json_data else 'None'}")
-                        break  # Success
-                    except Exception as e:
-                        logger.error(f"12306响应解析失败: {str(e)}, body: {resp.text}")
-                        response_data = {"success": False, "error": f"12306响应解析失败: {str(e)}"}
-                        return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-            except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
-                last_exception = e
-                if attempt < max_retries - 1:
-                    logger.warning(f"查询经停站网络请求失败，正在重试 ({attempt + 1}/{max_retries}): {str(e)}")
-                    await asyncio.sleep(1)
-                else:
-                    logger.error(f"查询经停站网络请求重试次数已耗尽: {str(e)}")
-        else:
-            response_data = {"success": False, "error": f"网络请求失败 (已重试{max_retries}次): {str(last_exception)}"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-        if not json_data:
-            response_data = {"success": False, "error": "12306接口返回空数据"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-        # 解析经停站数据 - 使用与参考实现相同的数据结构解析
-        data = json_data.get("data", {})
-        stations = data.get("data", [])
-
-        # 兼容官方经停站接口返回的多种数据结构
-        if not stations and "middleList" in data:
-            stations = []
-            for m in data["middleList"]:
-                if "fullList" in m:
-                    stations.extend(m["fullList"])
-        if not stations and "fullList" in data:
-            stations = data["fullList"]
-        if not stations and "route" in data:
-            stations = data["route"]
-
-        if not stations:
-            response_data = {"success": False, "train_no": train_no, "error": "未找到经停站信息"}
-            return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-        # 格式化输出JSON
-        stations_list = []
-        for station in stations:
-            station_data = {
-                "station_no": station.get("station_no", station.get("from_station_no", "")),
-                "station_name": station.get("station_name", station.get("from_station_name", "")),
-                "arrive_time": station.get("arrive_time", "----"),
-                "start_time": station.get("start_time", "----"),
-                "stopover_time": station.get("stopover_time", "----")
-            }
-            stations_list.append(station_data)
-
-        response_data = {
-            "success": True,
-            "train_no": train_no,
-            "train_date": train_date,
-            "count": len(stations_list),
-            "stations": stations_list
-        }
-        return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-    except Exception as e:
-        logger.error(f"查询经停站失败: {repr(e)}")
-        response_data = {"success": False, "error": "查询经停站失败", "detail": str(e)}
-        return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
+        result = await cr_utils.query_train_schedule(form)
+        return [{"type": "text", "text": json.dumps(pydantic_serialize(result), ensure_ascii=False)}]
+    except:
+        return [{"type": "text", "text": '查询列车时刻表失败'}]
 
 
 # ========== query_transfer_validated 函数实现 ==========
