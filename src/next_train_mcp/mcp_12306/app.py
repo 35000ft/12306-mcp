@@ -1,7 +1,7 @@
 import china_railway_tools.api as cr_utils
 from china_railway_tools.schemas import QueryTrainSchedule
 from fastapi import Request, APIRouter
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 
 from next_train_mcp.schemas import GenericResponse
 from next_train_mcp.schemas.user import LoginForm12306, LoginVerificationCode
@@ -23,7 +23,7 @@ async def login_verification_12306(request: Request, form: LoginVerificationCode
 
 
 @mcp_12306_app.tool()
-async def query_train_schedule(ctx, form: QueryTrainSchedule):
+async def query_train_schedule(ctx: Context, form: QueryTrainSchedule):
     """
     查询指定车次的所有经停站及时刻信息。
     参数: train_no(列车编号或车次号), from_station(出发站), to_station(到达站), train_date(日期)

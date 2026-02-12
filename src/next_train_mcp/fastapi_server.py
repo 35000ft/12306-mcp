@@ -1,3 +1,8 @@
+import asyncio
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import AsyncIterator
+
 from fastapi import FastAPI
 from fastmcp import FastMCP
 from fastmcp.server.middleware.logging import LoggingMiddleware
@@ -8,6 +13,27 @@ from next_train_mcp.utils.config import get_settings
 
 settings = get_settings()
 SERVER_VERSION = __version__
+
+
+async def setup(_app):
+    for middleware in MIDDLEWARES:
+        _app.add_middleware(middleware)
+    await _app.import_server(mcp_12306_app, prefix="12306")
+
+
+@dataclass
+class AppContext:
+    """Application context with typed dependencies."""
+
+    pass
+
+
+@asynccontextmanager
+async def lifespan(_app) -> AsyncIterator[AppContext]:
+    await setup(_app)
+    yield AppContext()
+
+
 app = FastAPI(
     title="Next Train API Server with MCP Support",
     version=SERVER_VERSION,
@@ -17,7 +43,7 @@ app = FastAPI(
 )
 app.include_router(mcp_12306.router, prefix='/12306', tags=['12306服务'])
 
-mcp = FastMCP("Next Train")
+mcp = FastMCP("Next Train", lifespan=lifespan)
 
 # Create ASGI app from MCP server
 mcp_app = mcp.http_app(path='/mcp')
@@ -25,13 +51,6 @@ mcp_app = mcp.http_app(path='/mcp')
 MIDDLEWARES = [
     LoggingMiddleware(),
 ]
-
-
-async def setup():
-    for middleware in MIDDLEWARES:
-        mcp.add_middleware(middleware)
-    await mcp.import_server(mcp_12306_app, prefix="12306")
-
 
 combined_app = FastAPI(
     title="Next Train API Server with MCP Support",
