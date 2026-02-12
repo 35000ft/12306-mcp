@@ -35,4 +35,4 @@ RUN uv run playwright install --with-deps
 EXPOSE 8000
 
 # 启动命令
-CMD ["uv", "run", "python", "-m", "mcp_12306.server"]
+CMD ["uv", "run", "python", "-m", "next_train_mcp.server"]

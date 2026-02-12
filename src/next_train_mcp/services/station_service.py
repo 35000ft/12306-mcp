@@ -4,7 +4,7 @@ from typing import Optional, List
 import china_railway_tools.api as cr_utils
 from china_railway_tools.schemas import Station
 
-from mcp_12306.utils.serializer import pydantic_serialize
+from next_train_mcp.utils.serializer import pydantic_serialize
 
 
 # 车站模糊搜索工具

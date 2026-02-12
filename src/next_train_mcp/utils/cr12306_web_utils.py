@@ -10,7 +10,7 @@ from loguru import logger
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError, BrowserContext
 from playwright.async_api import async_playwright, Page
 
-from mcp_12306.utils.command_manager import command_manager
+from next_train_mcp.utils.command_manager import command_manager
 
 
 class Web12306Playwright:

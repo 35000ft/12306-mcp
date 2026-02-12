@@ -7,12 +7,12 @@ from fastapi import FastAPI, Request
 from fastapi_cache import FastAPICache
 from loguru import logger
 
-from mcp_12306.utils.command_manager import command_manager
-from mcp_12306.schemas import GenericResponse, Status, BuyTicketReq
+from next_train_mcp.utils.command_manager import command_manager
+from next_train_mcp.schemas import GenericResponse, Status, BuyTicketReq
 
-from mcp_12306.utils.cr12306_web_utils import Web12306Playwright
-from mcp_12306.schemas.user import LoginForm12306, LoginVerificationCode
-from mcp_12306.utils.serializer import pydantic_serialize
+from next_train_mcp.utils.cr12306_web_utils import Web12306Playwright
+from next_train_mcp.schemas.user import LoginForm12306, LoginVerificationCode
+from next_train_mcp.utils.serializer import pydantic_serialize
 
 
 async def auto_close_context(app, ctx, ctx_id: str, delay: int, ):

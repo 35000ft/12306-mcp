@@ -18,9 +18,9 @@ from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
 from playwright.async_api import async_playwright
 
-from mcp_12306.schemas import BuyTicketReq
-from mcp_12306.schemas.user import LoginForm12306, LoginVerificationCode
-from mcp_12306.services import ticket_service, station_service
+from next_train_mcp.schemas import BuyTicketReq
+from next_train_mcp.schemas.user import LoginForm12306, LoginVerificationCode
+from next_train_mcp.services import ticket_service, station_service
 from . import __version__
 from .utils.config import get_settings
 

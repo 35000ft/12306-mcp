@@ -10,6 +10,10 @@ class Status(StrEnum):
 
 
 class GenericResponse(BaseModel):
-    status: Status | None = Field(Status.SUCCESS, title="Status")
-    msg: str | None = Field("", title="Message")
+    status: Optional[Status] = Field(Status.SUCCESS, title="Status")
+    msg: Optional[str] = Field("", title="Message")
     data: Optional[Any] = Field(None, title="Data")
+
+    @staticmethod
+    def error(msg: str):
+        return GenericResponse(status=Status.FAIL, msg=msg, data=None)
