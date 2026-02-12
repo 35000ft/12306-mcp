@@ -5,13 +5,12 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, date
-from typing import Dict, List
+from typing import Dict
 
-import china_railway_tools.api
 import china_railway_tools.api as cr_utils
+from china_railway_tools.schemas import QueryTrains, QueryTrainSchedule
 import httpx
 import uvicorn
-from china_railway_tools.schemas import QueryTrains, TrainNo, QueryTrainSchedule
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, Response
@@ -22,7 +21,6 @@ from playwright.async_api import async_playwright
 from mcp_12306.schemas import BuyTicketReq
 from mcp_12306.schemas.user import LoginForm12306, LoginVerificationCode
 from mcp_12306.services import ticket_service, station_service
-from mcp_12306.utils.serializer import pydantic_serialize
 from . import __version__
 from .utils.config import get_settings
 
@@ -97,25 +95,9 @@ MCP_TOOLS = [
         }
     },
     {
-        "name": "get-train-route-stations",
+        "name": "query-train-schedule",
         "description": "列车经停站全表查询。支持输入车次号或官方编号，自动转换，返回所有经停站、到发时刻、停留时间。支持三字码/全名。",
         "inputSchema": QueryTrainSchedule.model_json_schema()
-    },
-    {
-        "name": "get-train-no-by-train-code",
-        "description": "车次号转官方唯一编号（train_no），支持三字码/全名。常用于经停站查询前置转换。",
-        "inputSchema": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "title": "车次号转编号参数",
-            "properties": {
-                "train_code": {"type": "string", "title": "车次号", "minLength": 1},
-                "from_station": {"type": "string", "title": "出发站id或全名", "minLength": 1},
-                "to_station": {"type": "string", "title": "到达站id或全名", "minLength": 1},
-                "train_date": {"type": "string", "title": "出发日期", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}
-            }, "required": ["train_code", "from_station", "to_station", "train_date"],
-            "additionalProperties": False
-        }
     },
     {
         "name": "get-current-time",
@@ -420,15 +402,13 @@ async def mcp_endpoint_post(request: Request):
             try:
                 # Map tool names with hyphens to underscores for internal functions
                 if tool_name == "query-ticket-price":
-                    content = await query_ticket_price_validated(QueryTrains.model_validate(arguments))
+                    content = await ticket_service.query_ticket_price_validated(QueryTrains.model_validate(arguments))
                 elif tool_name == "search-stations":
                     content = await station_service.search_station(arguments)
                 elif tool_name == "query-transfer":
                     content = await query_transfer_validated(arguments)
-                elif tool_name == "get-train-route-stations":
-                    content = await get_train_route_stations_validated(QueryTrainSchedule.model_validate(arguments))
-                elif tool_name == "get-train-no-by-train-code":
-                    content = await get_train_no_by_train_code_validated(arguments)
+                elif tool_name == "query-train-schedule":
+                    content = await ticket_service.query_train_schedule(QueryTrainSchedule.model_validate(arguments))
                 elif tool_name == "get-current-time":
                     content = await get_current_time_validated(arguments)
                 elif tool_name == '12306-buy-ticket':
@@ -565,34 +545,6 @@ async def login_12306(request: Request, form: LoginForm12306):
 @app.post("/12306/login_verification")
 async def login_verification_12306(request: Request, form: LoginVerificationCode):
     return await ticket_service.login_verification_12306(request, form)
-
-
-async def get_train_no_by_train_code_validated(args: dict) -> list:
-    """
-    根据车次号、出发站、到达站、日期，查询唯一列车编号train_no。
-    只允许精确匹配，所有参数必须为全名或三字码。
-    直接请求 /otn/leftTicket/queryG。
-    """
-    train_code = args.get("train_code", "").strip().upper()
-    # from_station = args.get("from_station", "").strip().upper()
-    # to_station = args.get("to_station", "").strip().upper()
-    train_date = args.get("train_date", "").strip()
-    result: List[TrainNo] = await cr_utils.query_train_no(train_code, datetime.strptime(train_date, '%Y-%m-%d'))
-    return [{"type": "text", "text": json.dumps(pydantic_serialize(result), ensure_ascii=False)}]
-
-
-# ========== get_train_route_stations_validated 函数实现 ==========
-async def get_train_route_stations_validated(form: QueryTrainSchedule) -> list:
-    """
-    查询指定车次的所有经停站及时刻信息。
-    参数: train_no(列车编号或车次号), from_station(出发站), to_station(到达站), train_date(日期)
-    自动检测输入是车次号还是列车编号，如果是车次号则先转换为列车编号。
-    """
-    try:
-        result = await cr_utils.query_train_schedule(form)
-        return [{"type": "text", "text": json.dumps(pydantic_serialize(result), ensure_ascii=False)}]
-    except:
-        return [{"type": "text", "text": '查询列车时刻表失败'}]
 
 
 # ========== query_transfer_validated 函数实现 ==========
@@ -834,15 +786,6 @@ async def query_transfer_validated(args: dict) -> list:
         logger.error(f"查询中转失败: {repr(e)}")
         response_data = {"success": False, "error": "查询中转失败", "detail": str(e)}
         return [{"type": "text", "text": json.dumps(response_data, ensure_ascii=False)}]
-
-
-# ========== query_ticket_price_validated 函数实现 ==========
-async def query_ticket_price_validated(form: QueryTrains) -> list:
-    """
-    查询火车票价信息
-    """
-    result = await china_railway_tools.api.query_tickets(form)
-    return [{"type": "text", "text": json.dumps(pydantic_serialize(result), ensure_ascii=False)}]
 
 
 # ========== get_current_time_validated 新增时间工具 ==========

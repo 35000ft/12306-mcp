@@ -1,5 +1,8 @@
 import asyncio
+import json
 
+from china_railway_tools.schemas import QueryTrains, QueryTrainSchedule
+import china_railway_tools.api as cr_utils
 from fastapi import FastAPI, Request
 from fastapi_cache import FastAPICache
 from loguru import logger
@@ -9,6 +12,7 @@ from mcp_12306.schemas import GenericResponse, Status, BuyTicketReq
 
 from mcp_12306.utils.cr12306_web_utils import Web12306Playwright
 from mcp_12306.schemas.user import LoginForm12306, LoginVerificationCode
+from mcp_12306.utils.serializer import pydantic_serialize
 
 
 async def auto_close_context(app, ctx, ctx_id: str, delay: int, ):
@@ -77,3 +81,24 @@ async def buy_ticket(app: FastAPI, form: BuyTicketReq):
     except Exception as e:
         logger.error(f"12306下单失败:{e}", exc_info=e)
         return GenericResponse(status=Status.FAIL, msg="下单失败")
+
+
+async def query_ticket_price_validated(form: QueryTrains) -> list:
+    """
+    查询火车票价信息
+    """
+    result = await cr_utils.query_tickets(form)
+    return [{"type": "text", "text": json.dumps(pydantic_serialize(result), ensure_ascii=False)}]
+
+
+async def query_train_schedule(form: QueryTrainSchedule) -> list:
+    """
+    查询指定车次的所有经停站及时刻信息。
+    参数: train_no(列车编号或车次号), from_station(出发站), to_station(到达站), train_date(日期)
+    自动检测输入是车次号还是列车编号，如果是车次号则先转换为列车编号。
+    """
+    try:
+        result = await cr_utils.query_train_schedule(form)
+        return [{"type": "text", "text": json.dumps(pydantic_serialize(result), ensure_ascii=False)}]
+    except:
+        return [{"type": "text", "text": '查询列车时刻表失败'}]

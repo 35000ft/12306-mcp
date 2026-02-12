@@ -3,11 +3,11 @@ requires = ["hatchling", "hatch-fancy-pypi-readme"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mcp-server-12306"
-version = "0.3.0"
+name = "next-train-mcp-server"
+version = "0.1.0"
 description = "MCP服务器用于12306车票查询"
 authors = [
-    { name = "Drfccv", email = "2713587802@qq.com" }
+    { name = "yunshang", email = "above35000ft@foxmail.com" }
 ]
 dynamic = ["readme"]
 requires-python = ">=3.10"

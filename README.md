@@ -1,14 +1,15 @@
 # 🚄 MCP Server 12306
 
-![screenshot](https://img.shields.io/badge/12306-MCP-blue?logo=railway) 
-![FastAPI](https://img.shields.io/badge/FastAPI-async-green?logo=fastapi) 
+![screenshot](https://img.shields.io/badge/12306-MCP-blue?logo=railway)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-green?logo=fastapi)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 
 ---
 
 ## ✨ 项目简介
 
-MCP Server 12306是一款基于 Model Context Protocol (MCP) 的高性能火车票查询后端，支持官方 12306 余票、票价、车站、经停、换乘查询以及智能时间工具，适配 AI/自动化/智能助手等场景。界面友好，易于集成，开箱即用。
+MCP Server 12306是一款基于 Model Context Protocol (MCP) 的高性能火车票查询后端，支持官方 12306
+余票、票价、车站、经停、换乘查询以及智能时间工具，适配 AI/自动化/智能助手等场景。界面友好，易于集成，开箱即用。
 
 
 ---
@@ -28,65 +29,11 @@ MCP Server 12306是一款基于 Model Context Protocol (MCP) 的高性能火车�
 
 ## 🛠️ 快速上手
 
-本项目支持两种运行模式：
-1. **Stdio 模式**：适用于 Claude Desktop 等本地 MCP 客户端（推荐）。
-2. **Streamable HTTP 模式**：适用于远程部署或通过 SSE/Post 访问。
+本项目支持 Streamable HTTP 模式**：适用于远程部署或通过 SSE/Post 访问。
 
 ---
 
-### 模式 1：Stdio 模式（Claude Desktop 推荐）
-
-在此模式下，MCP Server 通过标准输入/输出与客户端通信，无需占用网络端口。
-
-#### 方式 A：使用 uvx（推荐）
-
-`uvx` 是 `uv` 包管理器提供的工具，环境隔离且启动极快。
-
-```json
-{
-  "mcpServers": {
-    "12306": {
-      "command": "uvx",
-      "args": ["mcp-server-12306"]
-    }
-  }
-}
-```
-
-#### 方式 B：使用 pipx
-
-如果您更习惯使用 pipx：
-
-```json
-{
-  "mcpServers": {
-    "12306": {
-      "command": "pipx",
-      "args": ["run", "--no-cache", "mcp-server-12306"]
-    }
-  }
-}
-```
-
-#### 方式 C：本地源码运行
-
-适用于开发者调试：
-
-```json
-{
-  "mcpServers": {
-    "12306": {
-      "command": "uv",
-      "args": ["run", "python", "-m", "mcp_12306.cli"],
-      "cwd": "/path/to/mcp-server-12306"
-    }
-  }
-}
-```
-
----
-
-### 模式 2：Streamable HTTP 模式
+### Streamable HTTP 模式
 
 在此模式下，Server 启动一个 Web 服务（默认 8000 端口），支持 MCP 的 SSE（Server-Sent Events）和 POST 交互。
 
@@ -114,26 +61,17 @@ uv run python scripts/start_server.py
 }
 ```
 
-#### 方式 B：Docker 部署
-
-```bash
-# 拉取镜像并运行
-docker run -d -p 8000:8000 --name mcp-server-12306 drfccv/mcp-server-12306:latest
-```
-
----
-
 ## 🤖 工具一览
 
 ### 支持的主流程工具
-| 工具名                    | 典型场景/功能描述                 |
-|--------------------------|----------------------------------|
-| query_tickets            | 余票/车次/座席/时刻一站式查询     |
-| query_ticket_price     | 实时查询各车次票价信息             |
-| search_stations          | 车站模糊搜索，支持中文/拼音/简拼   |
-| get_station_info         | 获取车站详情（名称、代码、地理等） |
-| query_transfer           | 一次中转换乘方案，自动拼接最优中转 |
-| get_train_route_stations | 查询指定列车经停站及时刻表         |
+
+| 工具名                      | 典型场景/功能描述                |
+|--------------------------|--------------------------|
+| query_ticket_price       | 实时查询各车次票价信息              |
+| search_stations          | 车站模糊搜索，支持中文/拼音/简拼        |
+| get_station_info         | 获取车站详情（名称、代码、地理等）        |
+| query_transfer           | 一次中转换乘方案，自动拼接最优中转        |
+| get_train_route_stations | 查询指定列车经停站及时刻表            |
 | get_current_time         | 获取当前时间与相对日期，帮助用户准确选择出行日期 |
 
 ---
@@ -150,6 +88,7 @@ docker run -d -p 8000:8000 --name mcp-server-12306 drfccv/mcp-server-12306:lates
 - [get_current_time.md](./docs/get_current_time.md) — 获取当前时间与相对日期
 
 每个文档包含：
+
 - 工具功能说明
 - 实现方法
 - 请求参数与返回示例
@@ -172,6 +111,7 @@ scripts/          # 启动与数据脚本
 ---
 
 ## 📄 License
+
 MIT License
 
 ---
