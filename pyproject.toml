@@ -68,7 +68,7 @@ name = "aliyun"
 url = "https://mirrors.aliyun.com/pypi/simple/"
 
 [tool.uv.sources]
-china-railway-tools = { git = "https://github.com/35000ft/china-railway-tools.git", rev = "master" }
+china-railway-tools = { git = "https://github.com/35000ft/china-railway-tools.git" }
 
 [project.scripts]
 mcp-12306 = "next_train_mcp.server:main"
