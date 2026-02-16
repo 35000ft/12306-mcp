@@ -1,7 +1,21 @@
-from pydantic import BaseModel
+import json
+from typing import TypeVar, Annotated, Type
+
+from pydantic import BaseModel, BeforeValidator
 from collections.abc import Mapping, Iterable
 from datetime import datetime, date
 from enum import Enum
+
+
+def fix_pydantic_args(v: str | dict):
+    if isinstance(v, str):
+        return json.loads(v)
+    return v
+
+
+T = TypeVar('T')
+BaseT = TypeVar('BaseT', bound=BaseModel)
+PydanticArgs = Annotated[BaseT, BeforeValidator(fix_pydantic_args, )]
 
 
 def pydantic_serialize(obj):

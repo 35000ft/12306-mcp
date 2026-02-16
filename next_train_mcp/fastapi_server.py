@@ -1,14 +1,19 @@
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastmcp import FastMCP
 from fastmcp.server.middleware.logging import LoggingMiddleware
+from loguru import logger
 
 from next_train_mcp import __version__, mcp_12306
 from next_train_mcp.mcp_12306 import mcp_12306_app
+from next_train_mcp.mcp_common import mcp_common_app
 from next_train_mcp.utils.config import get_settings
 
 settings = get_settings()
@@ -19,6 +24,7 @@ async def setup(_app):
     for middleware in MIDDLEWARES:
         _app.add_middleware(middleware)
     await _app.import_server(mcp_12306_app, prefix="12306")
+    await _app.import_server(mcp_common_app, prefix="common")
 
 
 @dataclass
@@ -32,6 +38,15 @@ class AppContext:
 async def lifespan(_app) -> AsyncIterator[AppContext]:
     await setup(_app)
     yield AppContext()
+
+
+@asynccontextmanager
+async def combined_lifespan(_app):
+    # Init MCP
+    async with mcp_app.lifespan(_app):
+        # Init FastAPI Cache
+        FastAPICache.init(InMemoryBackend(), prefix="next-train-cache")
+        yield
 
 
 app = FastAPI(
@@ -58,14 +73,17 @@ combined_app = FastAPI(
         *mcp_app.routes,
         *app.routes,
     ],
-    lifespan=mcp_app.lifespan,
+    lifespan=combined_lifespan,
 )
-if __name__ == "__main__":
-    import uvicorn
 
-    uvicorn.run(
-        "fastapi_server:combined_app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+if __name__ == "__main__":
+    logger.info(f'Running environment: {os.getenv("ENV")}')
+    if os.getenv("ENV") == "dev":
+        import uvicorn
+
+        uvicorn.run(
+            "fastapi_server:combined_app",
+            host="0.0.0.0",
+            port=8000,
+            reload=True
+        )

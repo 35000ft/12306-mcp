@@ -23,8 +23,8 @@ FROM mcp_12306_base
 # 复制项目代码
 COPY docs ./docs
 COPY scripts ./scripts
-COPY src ./src
 COPY README.md ./
+COPY next_train_mcp ./next_train_mcp
 
 # 安装项目本身
 RUN uv sync
@@ -35,4 +35,4 @@ RUN uv run playwright install --with-deps
 EXPOSE 8000
 
 # 启动命令
-CMD ["uv", "run", "python", "-m", "next_train_mcp.server"]
+CMD ["uv", "run", "uvicorn", "next_train_mcp.fastapi_server:combined_app", "--host", "0.0.0.0", "--port", "8000"]
