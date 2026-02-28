@@ -32,6 +32,7 @@ dependencies = [
     "fastapi-cache2>=0.2.2",
     "china-railway-tools",
     "fastmcp>=2.9.2",
+    "json5>=0.13.0",
 ]
 
 [project.optional-dependencies]

@@ -846,6 +846,15 @@ wheels = [
 ]
 
 [[package]]
+name = "json5"
+version = "0.13.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/77/e8/a3f261a66e4663f22700bc8a17c08cb83e91fbf086726e7a228398968981/json5-0.13.0.tar.gz", hash = "sha256:b1edf8d487721c0bf64d83c28e91280781f6e21f4a797d3261c7c828d4c165bf" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/d7/9e/038522f50ceb7e74f1f991bf1b699f24b0c2bbe7c390dd36ad69f4582258/json5-0.13.0-py3-none-any.whl", hash = "sha256:9a08e1dd65f6a4d4c6fa82d216cf2477349ec2346a38fd70cc11d2557499fbcc" },
+]
+
+[[package]]
 name = "loguru"
 version = "0.7.3"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
@@ -1139,6 +1148,7 @@ dependencies = [
     { name = "fastapi-cache2" },
     { name = "fastmcp" },
     { name = "httpx" },
+    { name = "json5" },
     { name = "loguru" },
     { name = "lxml" },
     { name = "mcp" },
@@ -1187,6 +1197,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=2.9.2" },
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.12.0" },
+    { name = "json5", specifier = ">=0.13.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "lxml", specifier = ">=4.9.0" },
     { name = "mcp", specifier = ">=1.9.0" },

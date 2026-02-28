@@ -51,7 +51,7 @@ async def query_ticket(ctx: Context,
        Query 12306 train tickets, including price, left ticket. Multiple condition filter supported.
        """
     result = await cr_utils.query_tickets(form, limit=limit)
-    return GenericResponse(data=result)
+    return GenericResponse(data=result[0:limit])
 
 
 @mcp_12306_app.tool()

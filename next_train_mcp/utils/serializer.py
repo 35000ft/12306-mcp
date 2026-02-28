@@ -1,6 +1,9 @@
+import ast
 import json
 from typing import TypeVar, Annotated, Type
 
+import json5
+from loguru import logger
 from pydantic import BaseModel, BeforeValidator
 from collections.abc import Mapping, Iterable
 from datetime import datetime, date
@@ -9,7 +12,15 @@ from enum import Enum
 
 def fix_pydantic_args(v: str | dict):
     if isinstance(v, str):
-        return json.loads(v)
+        try:
+            r = ast.literal_eval(v)
+            if isinstance(r, dict):
+                return r
+            else:
+                pass
+        except:
+            pass
+        return json5.loads(v)
     return v
 
 
