@@ -10,7 +10,7 @@ from next_train_mcp.schemas import GenericResponse, BuyTicketReq
 from next_train_mcp.schemas.user import LoginForm12306, LoginVerificationCode
 from next_train_mcp.services import ticket_service
 from next_train_mcp.utils.cr12306_web_utils import Web12306Playwright
-from next_train_mcp.utils.serializer import PydanticArgs
+from next_train_mcp.utils.serializer import PydanticArgs, pydantic_serialize
 
 mcp_12306_app = FastMCP(name="12306")
 
@@ -25,6 +25,34 @@ async def login_12306(request: Request, form: LoginForm12306):
 @router.post("/login_verification")
 async def login_verification_12306(request: Request, form: LoginVerificationCode):
     return await ticket_service.login_verification_12306(request, form)
+
+
+@mcp_12306_app.tool()
+async def search_stations(ctx: Context,
+                          query: str = Field(..., description='车站搜索关键词，支持：车站名称、拼音、简拼、三字码等'),
+                          limit: int = Field(10, description='返回结果的最大数量，范围1-50')):
+    """
+    智能车站搜索。支持中文名、拼音、简拼、三字码（Code）。可用于模糊搜索（如“北京”），也可用于精确获取车站代码（如输入“BJP”返回北京站信息）。
+    """
+    try:
+        query = query.strip()
+        if not query:
+            return GenericResponse.error("请输入搜索关键词")
+        if limit < 1 or limit > 50:
+            limit = 10
+        params = {}
+        if query.endswith("站"):
+            params['exact'] = True
+            query = query[:-1]
+        stations = await cr_utils.query_station(query, limit=limit, **params)
+        return GenericResponse(data={
+            "query": query,
+            "count": len(stations),
+            "stations": pydantic_serialize(stations)
+        })
+    except Exception as e:
+        logger.error("车站搜索失败", exc_info=e)
+        return GenericResponse.error('车站搜索失败')
 
 
 @mcp_12306_app.tool()
