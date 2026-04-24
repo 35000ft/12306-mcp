@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     server_port: int = Field(default=8000, description="服务器端口")
     debug: bool = Field(default=False, description="调试模式")
     log_level: str = Field(default="INFO", description="日志级别")
+    nmtr_api_baseurl: str = Field(default="", description="Next Train Metro Realtime API Base URL")
 
     model_config = SettingsConfigDict(
         env_file=".env",

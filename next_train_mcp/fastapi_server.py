@@ -14,6 +14,7 @@ from loguru import logger
 from next_train_mcp import __version__, mcp_12306
 from next_train_mcp.mcp_12306 import mcp_12306_app
 from next_train_mcp.mcp_common import mcp_common_app
+from next_train_mcp.mcp_next_train import mcp_next_train
 from next_train_mcp.utils.config import get_settings
 
 settings = get_settings()
@@ -25,6 +26,7 @@ async def setup(_app):
         _app.add_middleware(middleware)
     await _app.import_server(mcp_12306_app, prefix="12306")
     await _app.import_server(mcp_common_app, prefix="common")
+    await _app.import_server(mcp_next_train, prefix="next_train")
 
 
 @dataclass
@@ -56,7 +58,7 @@ app = FastAPI(
                 f"现已支持MCP服务, MCP端点: http://127.0.0.1:8000/mcp",
     debug=settings.debug,
 )
-app.include_router(mcp_12306.router, prefix='/12306', tags=['12306服务'])
+# app.include_router(mcp_12306.router, prefix='/12306', tags=['12306服务'])
 
 mcp = FastMCP("Next Train", lifespan=lifespan)
 
