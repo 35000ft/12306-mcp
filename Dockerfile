@@ -21,7 +21,6 @@ ENV TZ=Asia/Shanghai
 FROM mcp_12306_base
 
 # 复制项目代码
-COPY scripts ./scripts
 COPY next_train_mcp ./next_train_mcp
 
 # 安装项目本身

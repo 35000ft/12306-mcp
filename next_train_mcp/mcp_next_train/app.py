@@ -1,161 +1,19 @@
-import os
-from typing import Any
-
-import httpx
 from fastapi import APIRouter
 from fastmcp import FastMCP, Context
 from loguru import logger
 from pydantic import Field
 
+from next_train_mcp.mcp_next_train.functions import (
+    _format_station_schedule,
+    _format_station_train_info,
+    _nmtr_request,
+)
 from next_train_mcp.mcp_next_train.obfuscator import LongIdObfuscator
 from next_train_mcp.schemas import GenericResponse
-from next_train_mcp.utils.config import get_settings
 
-settings = get_settings()
 mcp_next_train = FastMCP(name="next_train")
 
 router = APIRouter()
-
-
-def _get_base_url() -> str:
-    url = settings.nmtr_api_baseurl or os.getenv("NMTR_API_BASEURL", "")
-    return url.rstrip("/")
-
-
-def _format_station_train_info(data: Any) -> str:
-    """格式化车站实时列车信息"""
-    if not data:
-        return "暂无列车信息"
-
-    trains = data if isinstance(data, list) else [data]
-    lines = []
-
-    lines.append("| 终点站 | 到达 | 发车 | 类型 |")
-    lines.append("|--------|------|------|------|")
-    for train in trains:
-        if not isinstance(train, dict):
-            continue
-        terminal = train.get("terminal", "")
-        arrival = train.get("arr", "")
-        departure = train.get("dep", "")
-        category = train.get("category", "")
-
-        arrival_time = arrival[11:16] if len(arrival) > 16 else arrival
-        departure_time = departure[11:16] if len(departure) > 16 else departure
-
-        lines.append(
-            f"| {terminal} | {arrival_time} | {departure_time} | {category} |"
-        )
-
-    return "\n".join(lines) if len(lines) > 2 else "暂无列车信息"
-
-
-def _format_train_info_by_id(data: Any) -> str:
-    """格式化单车列车信息"""
-    if not data or not isinstance(data, dict):
-        return "未找到列车信息"
-
-    train_no = data.get("trainNo", data.get("train_no", "未知车次"))
-    direction = data.get("direction", data.get("terminal", ""))
-    current_station = data.get("currentStation", data.get("current_station", "未知"))
-    next_station = data.get("nextStation", data.get("next_station", ""))
-    status = data.get("status", "未知")
-    delay = data.get("delay", 0)
-
-    lines = [f"## 列车 {train_no} 实时信息"]
-    if direction:
-        lines.append(f"**运行方向**: {direction}")
-    lines.append(f"**当前位置**: {current_station}")
-    if next_station:
-        lines.append(f"**下一站**: {next_station}")
-    lines.append(f"**运行状态**: {status}")
-    if delay:
-        lines.append(f"**延误**: {delay} 分钟")
-    else:
-        lines.append("**延误**: 准点")
-
-    return "\n".join(lines)
-
-
-def _format_station_schedule(data: Any) -> str:
-    """格式化车站时刻表为 Markdown"""
-    if not data or not isinstance(data, dict):
-        return "暂无时刻表信息"
-
-    schedules = data.get("schedules", [])
-    station_map = data.get("stationMap", {})
-
-    if not schedules:
-        return "暂无时刻表信息"
-
-    lines = []
-
-    for schedule_group in schedules:
-        if not isinstance(schedule_group, dict):
-            continue
-
-        # 合并所有方向的列车并按时间排序
-        all_trains = []
-        dest_names = []
-
-        for dest_id, trains in schedule_group.items():
-            if not isinstance(trains, list):
-                continue
-
-            station_info = station_map.get(dest_id, {})
-            dest_name = station_info.get("name", dest_id)
-            dest_names.append(dest_name)
-
-            for train in trains:
-                if not isinstance(train, list) or len(train) < 2:
-                    continue
-                time_seconds = train[1]
-                train_type = train[2][0] if len(train) > 2 and isinstance(train[2], list) else ""
-
-                # 终点标记：河定桥 SHORT 标记为 "河"
-                mark = ""
-                if train_type == "SHORT":
-                    mark = dest_name[:1]
-                elif train_type and train_type != "LOCAL":
-                    mark = train_type[0]
-
-                all_trains.append({"time": time_seconds, "mark": mark})
-
-        if not all_trains:
-            continue
-
-        if dest_names:
-            lines.append(f"**开往**: *{'/'.join(dest_names)}*")
-            lines.append("")
-
-        # 按小时分组
-        hours = {}
-        for train in sorted(all_trains, key=lambda x: x["time"]):
-            h = train["time"] // 3600
-            m = (train["time"] % 3600) // 60
-            mark = train["mark"]
-
-            hour_key = str(h)
-            if hour_key not in hours:
-                hours[hour_key] = []
-
-            minute_str = f"{m:02d}{mark}"
-            hours[hour_key].append(minute_str)
-
-        # Markdown 表格（每个分钟独立单元格，每行最多6个）
-        lines.append("| 小时 | 分钟 | 分钟 | 分钟 | 分钟 | 分钟 | 分钟 |")
-        lines.append("|------|------|------|------|------|------|------|")
-        for h in sorted(hours.keys(), key=int):
-            minute_list = hours[h]
-            for i in range(0, len(minute_list), 6):
-                chunk = minute_list[i:i + 6]
-                hour_display = f"{h}时" if i == 0 else ""
-                cells = [hour_display] + chunk + [""] * (6 - len(chunk))
-                lines.append(f"| {' | '.join(cells)} |")
-
-        lines.append("")
-
-    return "\n".join(lines) if lines else "暂无时刻表信息"
 
 
 @mcp_next_train.tool()
@@ -166,17 +24,12 @@ async def fetch_station_train_info(ctx: Context,
     查询车站实时列车信息
     """
     try:
-        base_url = _get_base_url()
-        if not base_url:
-            return GenericResponse.error("NMTR_API_BASEURL 未配置")
         obfuscated_line_id = LongIdObfuscator.id_to_code(int(line_id))
-        url = f"{base_url}/metro-realtime/realtime/train-info/station/v2/{station_id}/{obfuscated_line_id}"
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url)
-            resp.raise_for_status()
-            payload = resp.json()
-            data = payload.get("data") if isinstance(payload, dict) else payload
-            return GenericResponse(data=_format_station_train_info(data))
+        path = f"/metro-realtime/realtime/train-info/station/v2/{station_id}/{obfuscated_line_id}"
+        data = await _nmtr_request("POST", path)
+        return GenericResponse(data=_format_station_train_info(data))
+    except ValueError as e:
+        return GenericResponse.error(str(e))
     except Exception as e:
         logger.error("查询车站列车信息失败", exc_info=e)
         return GenericResponse.error(f"查询失败: {e}")
@@ -188,18 +41,42 @@ async def fetch_station_schedule(ctx: Context,
                                  schedule_id: str = Field(..., description='时刻表ID')):
     """
     查询车站时刻表，返回格式化后的 Markdown 文本
+    使用说明: 调用本工具前, 需先调用next_train_fetch_line_schedules工具获取线路的时刻表信息, 根据用户需要再传入相应的时刻表id和车站id
     """
     try:
-        base_url = _get_base_url()
-        if not base_url:
-            return GenericResponse.error("NMTR_API_BASEURL 未配置")
-        url = f"{base_url}/metro-realtime/realtime/train-info/station/schedule/v3/{station_id}/{schedule_id}"
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url)
-            resp.raise_for_status()
-            payload = resp.json()
-            data = payload.get("data") if isinstance(payload, dict) else payload
-            return GenericResponse(data=_format_station_schedule(data))
+        path = f"/metro-realtime/realtime/train-info/station/schedule/v3/{station_id}/{schedule_id}"
+        data = await _nmtr_request("POST", path)
+        return GenericResponse(data=_format_station_schedule(data))
+    except ValueError as e:
+        return GenericResponse.error(str(e))
     except Exception as e:
         logger.error("查询车站时刻表失败", exc_info=e)
+        return GenericResponse.error(f"查询失败: {e}")
+
+
+@mcp_next_train.tool()
+async def fetch_line_schedules(ctx: Context,
+                               line_id: str = Field(..., description='线路ID')):
+    """
+    查询线路使用的时刻表列表
+
+    Response data 字段说明:
+        - name: 时刻表名称，如 "2411-1号线周一至周四"
+        - period: 适用星期几，如 [1,2,3,4] 表示周一至周四
+        - lineId: 所属线路ID
+        - scheduleId: 时刻表ID，可用于查询具体时刻
+        - category: 时刻表分类，WORKDAY 工作日 / WEEKEND 周末
+        - fromDate: 生效起始日期，格式 [年, 月, 日]
+        - toDate: 生效结束日期，格式 [年, 月, 日]
+        - specifiedDates: 指定日期，null 表示按周期生效
+    """
+    try:
+        obfuscated_line_id = LongIdObfuscator.id_to_code(int(line_id))
+        path = f"/metro-realtime/schedules/header/get/line/{obfuscated_line_id}"
+        data = await _nmtr_request("GET", path)
+        return GenericResponse(data=data)
+    except ValueError as e:
+        return GenericResponse.error(str(e))
+    except Exception as e:
+        logger.error("查询线路时刻表失败", exc_info=e)
         return GenericResponse.error(f"查询失败: {e}")

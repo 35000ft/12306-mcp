@@ -1,0 +1,9 @@
+.idea
+.venv
+*.log
+README.md
+*.png
+*.jpg
+temp
+.zip
+data
