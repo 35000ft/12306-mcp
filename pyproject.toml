@@ -29,6 +29,7 @@ dependencies = [
     "china-railway-tools",
     "fastmcp>=2.9.2",
     "json5>=0.13.0",
+    "dify-client-python",
 ]
 
 [project.optional-dependencies]
@@ -56,6 +57,7 @@ dev = [
 
 [tool.uv.sources]
 china-railway-tools = { git = "https://github.com/35000ft/china-railway-tools.git" }
+dify-client-python = { git = "https://github.com/Pandaaaa906/dify-client-python.git" }
 
 [project.scripts]
 mcp-12306 = "next_train_mcp.server:main"

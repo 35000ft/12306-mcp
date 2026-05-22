@@ -18,3 +18,7 @@ class GenericResponse(BaseModel):
     @staticmethod
     def error(msg: str):
         return GenericResponse(status=Status.FAIL, msg=msg, data=None)
+
+    @staticmethod
+    def ok(data: Any):
+        return GenericResponse(status=Status.SUCCESS, data=data)

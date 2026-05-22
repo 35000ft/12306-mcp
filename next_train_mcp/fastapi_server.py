@@ -14,6 +14,7 @@ from loguru import logger
 from next_train_mcp import __version__, mcp_12306
 from next_train_mcp.mcp_12306 import mcp_12306_app
 from next_train_mcp.mcp_common import mcp_common_app
+from next_train_mcp.mcp_meteorology import mcp_meteo
 from next_train_mcp.mcp_next_train import mcp_next_train
 from next_train_mcp.utils.config import get_settings
 
@@ -27,6 +28,7 @@ async def setup(_app):
     await _app.import_server(mcp_12306_app, prefix="12306")
     await _app.import_server(mcp_common_app, prefix="common")
     await _app.import_server(mcp_next_train, prefix="next_train")
+    await _app.import_server(mcp_meteo, prefix="meteo")
 
 
 @dataclass

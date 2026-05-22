@@ -7,3 +7,4 @@ services:
       - "8810:8000"
     volumes:
       - /home/ubuntu/ms-playwright:/root/.cache/ms-playwright
+      - /usr/share/py-projects/next-train-mcp/data:/app/data
