@@ -1,8 +1,13 @@
 import asyncio
 import os
+import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import AsyncIterator
+
+# Windows 上确保 Playwright 能创建子进程启动浏览器驱动
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi import FastAPI
 from fastapi_cache import FastAPICache
@@ -15,6 +20,7 @@ from next_train_mcp import __version__, mcp_12306
 from next_train_mcp.mcp_12306 import mcp_12306_app
 from next_train_mcp.mcp_common import mcp_common_app
 from next_train_mcp.mcp_meteorology import mcp_meteo
+from next_train_mcp.mcp_flight import mcp_flight_app
 from next_train_mcp.mcp_next_train import mcp_next_train
 from next_train_mcp.utils.config import get_settings
 
@@ -27,6 +33,7 @@ async def setup(_app):
         _app.add_middleware(middleware)
     await _app.import_server(mcp_12306_app, prefix="12306")
     await _app.import_server(mcp_common_app, prefix="common")
+    await _app.import_server(mcp_flight_app, prefix="flight")
     await _app.import_server(mcp_next_train, prefix="next_train")
     await _app.import_server(mcp_meteo, prefix="meteo")
 
