@@ -26,6 +26,9 @@ COPY next_train_mcp ./next_train_mcp
 # 安装项目本身
 RUN uv sync
 
+# 安装 Playwright 浏览器及其系统依赖
+RUN uv run playwright install --with-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
 
 # 暴露端口
 EXPOSE 8000

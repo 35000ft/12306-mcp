@@ -45,7 +45,7 @@ def _start_browser_sync():
                 pass
         if _playwright_sync is None:
             _playwright_sync = sync_playwright().start()
-        _browser_sync = _playwright_sync.chromium.launch(headless=False)
+        _browser_sync = _playwright_sync.chromium.launch(headless=True)
         logger.info("Shared Playwright browser (sync) launched")
         return _browser_sync
 
